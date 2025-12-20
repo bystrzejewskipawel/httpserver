@@ -6,9 +6,10 @@ import { NotFoundError, BadRequestError, ForbiddenError, UnauthorizedError } fro
 import postgres from "postgres";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createUser, deleteUsers } from "./db/queries/users.js";
+import { createUser, deleteUsers, getUserByEmail } from "./db/queries/users.js";
 import { NewUser, User, NewChirp } from "./db/schema.js";
 import { createChirp, getAllChirps, getChirpByID } from "./db/queries/chirps.js";
+import { hashPassword, checkPasswordHash } from "./auth.js";
 
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
@@ -20,10 +21,20 @@ app.use("/app", middlewareMetricsInc, express.static("./src/app"));
 
 app.get("/admin/metrics", handlerNoOfRequests);
 app.get("/api/healthz", handlerReadiness);
-app.get("/api/chirps", handlerGetChirps)
-app.get("/api/chirps/:chirpID", handlerGetChirpByID)
+app.get("/api/chirps", (req, res, next) => {
+  Promise.resolve(handlerGetChirps(req, res)).catch(next);
+})
+app.get("/api/chirps/:chirpID", (req, res, next) => {
+  Promise.resolve(handlerGetChirpByID(req, res)).catch(next);
+})
 
-app.post("/admin/reset", handlerReset);
+app.post("/admin/reset",  (req, res, next) => {
+  Promise.resolve(handlerReset(req, res)).catch(next);
+});
+
+app.post("/api/login",  (req, res, next) => {
+  Promise.resolve(handlerLogin(req, res)).catch(next);
+});
 
 app.post("/api/users", (req, res, next) => {
   Promise.resolve(handlerUsers(req, res)).catch(next);
@@ -57,20 +68,46 @@ async function handlerReset(req: Request, res: Response): Promise<void> {
 }  
 
 async function handlerUsers(req: Request, res: Response) {
-  // type User = {
-  //   email: string;
-  // }
 
-  let newUser: NewUser = { email: "" };
-  try {
-     newUser = req.body;
-  } catch (error) {
+  let newUser: NewUser = req.body;
+  if (!newUser.email) {
     throw new BadRequestError("No email found in body");
   }
+  if (!newUser.password) {
+    throw new BadRequestError("Password missing");
+  }
+
+  newUser.password = await hashPassword(newUser.password);
 
   const resp = await createUser(newUser);
 
-  res.status(201).send(resp);
+    res.status(201).send({ id: resp.id, createdAt: resp.createdAt, updatedAt: resp.createdAt, email: resp.email});
+}
+
+async function handlerLogin(req: Request, res: Response) {
+
+    let newUser: NewUser = req.body;
+    if (!newUser.email) {
+      throw new BadRequestError("No email found in body");
+    }
+    if (!newUser.password) {
+      throw new BadRequestError("Password missing");
+    }
+
+    const user = await getUserByEmail(newUser.email);
+
+    if (!user) {
+      throw new UnauthorizedError("Unauthorized");
+    }
+
+    const passMatch = await checkPasswordHash(newUser.password, user.password);
+
+    if (!passMatch) {
+      throw new UnauthorizedError("Unauthorized");
+    }
+
+    res.status(200).send({ id: user.id, createdAt: user.createdAt, updatedAt: user.updatedAt, email: user.email });
+
 }
 
 async function handlerGetChirpByID(req: Request, res: Response) {
