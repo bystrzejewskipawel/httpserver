@@ -1,0 +1,2 @@
+GET http://localhost:8080/api/chirps/ea620b35-8675-424d-bd3e-90bb4fc7ac2f
+content-type: application/json
