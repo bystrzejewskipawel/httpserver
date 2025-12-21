@@ -1,6 +1,7 @@
 import { hash, verify } from "argon2";
 import jwt, { JwtPayload } from "jsonwebtoken";
-import { BadRequestError, UnauthorizedError } from "./errors";
+import { UnauthorizedError } from "./errors.js";
+import { Request } from "express";
 
 const TOKEN_ISSUER = "chirpy";
 
@@ -42,4 +43,12 @@ export function validateJWT(tokenString: string, secret: string) {
     }
 
     return decoded.sub;
+}
+
+export function getBearerToken(req: Request): string {
+    const header = req.get('Authorization');
+    if (!header) {
+        throw new UnauthorizedError("Authorization missing");
+    }
+    return header.replace("Bearer ", "");
 }

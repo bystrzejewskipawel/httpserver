@@ -9,7 +9,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { createUser, deleteUsers, getUserByEmail } from "./db/queries/users.js";
 import { NewUser, User, NewChirp } from "./db/schema.js";
 import { createChirp, getAllChirps, getChirpByID } from "./db/queries/chirps.js";
-import { hashPassword, checkPasswordHash } from "./auth.js";
+import { hashPassword, checkPasswordHash, getBearerToken, makeJWT, validateJWT } from "./auth.js";
 
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
@@ -86,12 +86,25 @@ async function handlerUsers(req: Request, res: Response) {
 
 async function handlerLogin(req: Request, res: Response) {
 
-    let newUser: NewUser = req.body;
+    type parameters = {
+      email: string;
+      password: string;
+      expiresInSeconds: number;
+    }
+
+    let newUser: parameters = req.body;
     if (!newUser.email) {
       throw new BadRequestError("No email found in body");
     }
     if (!newUser.password) {
       throw new BadRequestError("Password missing");
+    }
+    if (!newUser.expiresInSeconds) {
+      newUser.expiresInSeconds = 3600;
+    } else {
+      if (newUser.expiresInSeconds > 3600) {
+        newUser.expiresInSeconds = 3600;
+      }
     }
 
     const user = await getUserByEmail(newUser.email);
@@ -106,7 +119,7 @@ async function handlerLogin(req: Request, res: Response) {
       throw new UnauthorizedError("Unauthorized");
     }
 
-    res.status(200).send({ id: user.id, createdAt: user.createdAt, updatedAt: user.updatedAt, email: user.email });
+    res.status(200).send({ id: user.id, createdAt: user.createdAt, updatedAt: user.updatedAt, email: user.email, token: makeJWT(user.id, newUser.expiresInSeconds, config.api.secret) });
 
 }
 
@@ -139,15 +152,15 @@ async function handlerChirps(req: Request, res: Response) {
       userId: string;
     }
 
+    const token = getBearerToken(req);
+
+    const userId = validateJWT(token, config.api.secret);
+
     const params: parameters = req.body;
 
     if (!params.body) {
       throw new BadRequestError("Body is missing");
     }
-
-     if (!params.userId) {
-      throw new BadRequestError("User ID is missing");
-    }   
 
     if (params.body.length > 140) {
         throw new BadRequestError("Chirp is too long. Max length is 140");
@@ -163,7 +176,7 @@ async function handlerChirps(req: Request, res: Response) {
     }
     const cleanedBody = words.join(" ");
 
-    const newChirp: NewChirp = { body: cleanedBody, userId: params.userId};
+    const newChirp: NewChirp = { body: cleanedBody, userId: userId};
     const resp = await createChirp(newChirp);
 
     if (!resp) {
