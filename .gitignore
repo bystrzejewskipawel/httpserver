@@ -140,3 +140,4 @@ vite.config.ts.timestamp-*
 
 drizzle.config.ts
 .env
+tests.http
