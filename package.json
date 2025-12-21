@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest --run",
     "build": "npx tsc",
     "start": "node dist/index.js",
     "dev": "npx tsc && node dist/index.js",
@@ -16,15 +16,18 @@
   "license": "ISC",
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.2",
     "drizzle-kit": "^0.31.8",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
   },
   "type": "module",
   "dependencies": {
     "argon2": "^0.44.0",
     "drizzle-orm": "^0.45.1",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
     "postgres": "^3.4.7"
   }
 }
