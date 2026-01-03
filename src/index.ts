@@ -7,9 +7,10 @@ import postgres from "postgres";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createUser, deleteUsers, getUserByEmail } from "./db/queries/users.js";
-import { NewUser, User, NewChirp } from "./db/schema.js";
+import { NewUser, User, NewChirp, NewRefreshToken } from "./db/schema.js";
 import { createChirp, getAllChirps, getChirpByID } from "./db/queries/chirps.js";
-import { hashPassword, checkPasswordHash, getBearerToken, makeJWT, validateJWT } from "./auth.js";
+import { hashPassword, checkPasswordHash, getBearerToken, makeJWT, validateJWT, makeRefreshToken } from "./auth.js";
+import { createRefreshToken, getRefreshToken, revokeToken } from "./db/queries/tokens.js";
 
 const migrationClient = postgres(config.db.url, { max: 1 });
 await migrate(drizzle(migrationClient), config.db.migrationConfig);
@@ -34,6 +35,14 @@ app.post("/admin/reset",  (req, res, next) => {
 
 app.post("/api/login",  (req, res, next) => {
   Promise.resolve(handlerLogin(req, res)).catch(next);
+});
+
+app.post("/api/refresh",  (req, res, next) => {
+  Promise.resolve(handlerRefresh(req, res)).catch(next);
+});
+
+app.post("/api/revoke",  (req, res, next) => {
+  Promise.resolve(handlerRevoke(req, res)).catch(next);
 });
 
 app.post("/api/users", (req, res, next) => {
@@ -119,7 +128,17 @@ async function handlerLogin(req: Request, res: Response) {
       throw new UnauthorizedError("Unauthorized");
     }
 
-    res.status(200).send({ id: user.id, createdAt: user.createdAt, updatedAt: user.updatedAt, email: user.email, token: makeJWT(user.id, newUser.expiresInSeconds, config.api.secret) });
+    let expireDate = new Date();
+    expireDate.setDate(expireDate.getDate() + 60);
+
+    const newRefreshToken: NewRefreshToken = {token: makeRefreshToken(), userId: user.id, expiresAt: expireDate};
+    const refreshToken = await createRefreshToken(newRefreshToken);
+
+    if (!refreshToken) {
+      throw new Error("Could not create Refresh Token");
+    }
+
+    res.status(200).send({ id: user.id, createdAt: user.createdAt, updatedAt: user.updatedAt, email: user.email, token: makeJWT(user.id, newUser.expiresInSeconds, config.api.secret), refreshToken: refreshToken.token });
 
 }
 
@@ -143,6 +162,43 @@ async function handlerGetChirps(req: Request, res: Response) {
     }
 
     res.status(200).send(resp);
+}
+
+async function handlerRefresh(req: Request, res: Response) {
+
+    const token = getBearerToken(req);
+
+    const refreshToken = await getRefreshToken(token);
+
+    if (!refreshToken) {
+      throw new UnauthorizedError("Unauthorized");
+    } else if (refreshToken.expiresAt < new Date() || refreshToken.revokedAt !== null) {
+      throw new UnauthorizedError("Invalid token");
+    }
+
+    res.status(200).send({ token: makeJWT(refreshToken.userId, 3600, config.api.secret) });
+
+}
+
+async function handlerRevoke(req: Request, res: Response) {
+    
+  const token = getBearerToken(req);
+
+    const refreshToken = await getRefreshToken(token);
+
+    if (!refreshToken) {
+      throw new UnauthorizedError("Unauthorized");
+    } else if (refreshToken.expiresAt < new Date() || !refreshToken.expiresAt) {
+      throw new UnauthorizedError("Invalid token");
+    }
+
+    const revokeStatus = await revokeToken(token);
+
+    if (!revokeStatus) {
+      throw new Error("Could not revoke");
+    }
+
+    res.status(204).send();
 }
 
 async function handlerChirps(req: Request, res: Response) {

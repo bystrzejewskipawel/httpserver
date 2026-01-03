@@ -2,6 +2,7 @@ import { hash, verify } from "argon2";
 import jwt, { JwtPayload } from "jsonwebtoken";
 import { UnauthorizedError } from "./errors.js";
 import { Request } from "express";
+import { randomBytes } from "node:crypto";
 
 const TOKEN_ISSUER = "chirpy";
 
@@ -23,6 +24,10 @@ export async function checkPasswordHash(password: string, hash: string): Promise
 export function makeJWT(userID: string, expiresIn: number, secret: string): string {
     const pl: payload = { iss: TOKEN_ISSUER, sub: userID, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + expiresIn};
     return jwt.sign(pl, secret, { algorithm: "HS256" });
+}
+
+export function makeRefreshToken() {
+    return randomBytes(32).toString('hex');
 }
 
 export function validateJWT(tokenString: string, secret: string) {
