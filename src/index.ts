@@ -6,9 +6,9 @@ import { NotFoundError, BadRequestError, ForbiddenError, UnauthorizedError } fro
 import postgres from "postgres";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createUser, deleteUsers, getUserByEmail } from "./db/queries/users.js";
+import { createUser, deleteUsers, getUserByEmail, updateUser } from "./db/queries/users.js";
 import { NewUser, User, NewChirp, NewRefreshToken } from "./db/schema.js";
-import { createChirp, getAllChirps, getChirpByID } from "./db/queries/chirps.js";
+import { createChirp, deleteChirpByID, getAllChirps, getChirpByID } from "./db/queries/chirps.js";
 import { hashPassword, checkPasswordHash, getBearerToken, makeJWT, validateJWT, makeRefreshToken } from "./auth.js";
 import { createRefreshToken, getRefreshToken, revokeToken } from "./db/queries/tokens.js";
 
@@ -29,6 +29,10 @@ app.get("/api/chirps/:chirpID", (req, res, next) => {
   Promise.resolve(handlerGetChirpByID(req, res)).catch(next);
 })
 
+app.delete("/api/chirps/:chirpID", (req, res, next) => {
+  Promise.resolve(handlerDeleteChirpByID(req, res)).catch(next);
+});
+
 app.post("/admin/reset",  (req, res, next) => {
   Promise.resolve(handlerReset(req, res)).catch(next);
 });
@@ -48,9 +52,16 @@ app.post("/api/revoke",  (req, res, next) => {
 app.post("/api/users", (req, res, next) => {
   Promise.resolve(handlerUsers(req, res)).catch(next);
 });
+
+app.put("/api/users", (req, res, next) => {
+  Promise.resolve(handlerExistingUsers(req, res)).catch(next);
+});
+
 app.post("/api/chirps", (req, res, next) => {
   Promise.resolve(handlerChirps(req, res)).catch(next);
 });
+
+
 app.use(errorHandler);
 
 app.listen(config.api.port, () => {
@@ -91,6 +102,28 @@ async function handlerUsers(req: Request, res: Response) {
   const resp = await createUser(newUser);
 
     res.status(201).send({ id: resp.id, createdAt: resp.createdAt, updatedAt: resp.createdAt, email: resp.email});
+}
+
+async function handlerExistingUsers(req: Request, res: Response) {
+
+  const token = getBearerToken(req);
+
+  const userId = validateJWT(token, config.api.secret);
+
+  let newUser: NewUser = req.body;
+  if (!newUser.email) {
+    throw new BadRequestError("No email found in body");
+  }
+  if (!newUser.password) {
+    throw new BadRequestError("Password missing");
+  }
+
+  newUser.password = await hashPassword(newUser.password);
+
+  const resp = await updateUser(newUser, userId);
+
+  res.status(200).send({ id: resp.id, createdAt: resp.createdAt, updatedAt: resp.createdAt, email: resp.email});
+
 }
 
 async function handlerLogin(req: Request, res: Response) {
@@ -152,6 +185,32 @@ async function handlerGetChirpByID(req: Request, res: Response) {
     }
 
     res.status(200).send(resp);
+}
+
+async function handlerDeleteChirpByID(req: Request, res: Response) {
+  const chirpId = req.params.chirpID;
+
+  const token = getBearerToken(req);
+
+  const userId = validateJWT(token, config.api.secret);
+
+  const resp = await getChirpByID(chirpId);
+  if (!resp) {
+    throw new NotFoundError("Chirp Not Found");
+  }
+
+  if (resp.userId !== userId) {
+    throw new ForbiddenError("Forbidden");
+  }
+
+  const deleteResp = await deleteChirpByID(chirpId);
+
+  if (!deleteResp) {
+    throw new NotFoundError("Chirp Not Found");
+  }
+
+  res.status(204).send();
+
 }
 
 async function handlerGetChirps(req: Request, res: Response) {
