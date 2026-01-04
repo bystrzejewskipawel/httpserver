@@ -1,6 +1,6 @@
 import { hash, verify } from "argon2";
 import jwt, { JwtPayload } from "jsonwebtoken";
-import { UnauthorizedError } from "./errors.js";
+import { BadRequestError, UnauthorizedError } from "./errors.js";
 import { Request } from "express";
 import { randomBytes } from "node:crypto";
 
@@ -55,5 +55,19 @@ export function getBearerToken(req: Request): string {
     if (!header) {
         throw new UnauthorizedError("Authorization missing");
     }
+    if (!header.includes("Bearer ")) {
+        throw new BadRequestError("Bearer header is missing")
+    }
     return header.replace("Bearer ", "");
+}
+
+export function getAPIKey(req: Request): string {
+    const header = req.get('Authorization');
+    if (!header) {
+        throw new UnauthorizedError("Authorization missing");
+    }
+    if (!header.includes("ApiKey ")) {
+        throw new BadRequestError("ApiKey header is missing");
+    }
+    return header.replace("ApiKey ", "");
 }

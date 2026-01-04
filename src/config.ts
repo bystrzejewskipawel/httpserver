@@ -10,6 +10,7 @@ type APIConfig = {
   port: number;
   platform: string;
   secret: string;
+  polkaKey: string;
 };
 
 type DBConfig = {
@@ -31,4 +32,4 @@ const migrationConfig: MigrationConfig = {
   migrationsFolder: "./src/db/migrations",
 };
 
-export const config: Config = { api: {fileServerHits: 0, port: Number(envOrThrow("PORT")), platform: envOrThrow("PLATFORM"), secret: envOrThrow("SECRET")}, db: { url: envOrThrow("DB_URL"), migrationConfig: migrationConfig}};
+export const config: Config = { api: {fileServerHits: 0, port: Number(envOrThrow("PORT")), platform: envOrThrow("PLATFORM"), secret: envOrThrow("SECRET"), polkaKey: envOrThrow("POLKA_KEY")}, db: { url: envOrThrow("DB_URL"), migrationConfig: migrationConfig}};

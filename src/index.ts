@@ -6,10 +6,10 @@ import { NotFoundError, BadRequestError, ForbiddenError, UnauthorizedError } fro
 import postgres from "postgres";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { createUser, deleteUsers, getUserByEmail, updateUser } from "./db/queries/users.js";
+import { createUser, deleteUsers, getUserByEmail, updateToRed, updateUser } from "./db/queries/users.js";
 import { NewUser, User, NewChirp, NewRefreshToken } from "./db/schema.js";
 import { createChirp, deleteChirpByID, getAllChirps, getChirpByID } from "./db/queries/chirps.js";
-import { hashPassword, checkPasswordHash, getBearerToken, makeJWT, validateJWT, makeRefreshToken } from "./auth.js";
+import { hashPassword, checkPasswordHash, getBearerToken, makeJWT, validateJWT, makeRefreshToken, getAPIKey } from "./auth.js";
 import { createRefreshToken, getRefreshToken, revokeToken } from "./db/queries/tokens.js";
 
 const migrationClient = postgres(config.db.url, { max: 1 });
@@ -61,6 +61,9 @@ app.post("/api/chirps", (req, res, next) => {
   Promise.resolve(handlerChirps(req, res)).catch(next);
 });
 
+app.post("/api/polka/webhooks", (req, res, next) => {
+  Promise.resolve(handlerWebhooks(req, res)).catch(next);
+});
 
 app.use(errorHandler);
 
@@ -101,7 +104,7 @@ async function handlerUsers(req: Request, res: Response) {
 
   const resp = await createUser(newUser);
 
-    res.status(201).send({ id: resp.id, createdAt: resp.createdAt, updatedAt: resp.createdAt, email: resp.email});
+    res.status(201).send({ id: resp.id, createdAt: resp.createdAt, updatedAt: resp.createdAt, email: resp.email, isChirpyRed: resp.isChirpyRed});
 }
 
 async function handlerExistingUsers(req: Request, res: Response) {
@@ -122,8 +125,41 @@ async function handlerExistingUsers(req: Request, res: Response) {
 
   const resp = await updateUser(newUser, userId);
 
-  res.status(200).send({ id: resp.id, createdAt: resp.createdAt, updatedAt: resp.createdAt, email: resp.email});
+  res.status(200).send({ id: resp.id, createdAt: resp.createdAt, updatedAt: resp.createdAt, email: resp.email, isChirpyRed: resp.isChirpyRed});
 
+}
+
+async function handlerWebhooks(req: Request, res: Response) {
+
+    const apikey = getAPIKey(req);
+
+    if (apikey !== config.api.polkaKey) {
+      throw new UnauthorizedError("Unauthorized");
+    }
+
+    type parameters = {
+      event: string;
+      data: { userId: string };
+    }
+
+    let input: parameters = req.body;
+
+    if (!input) {
+      throw new BadRequestError("Bad Request");
+    }
+
+    if (input.event !== "user.upgraded") {
+      res.status(204).send();
+      return;
+    }
+
+    const resp = await updateToRed(input.data.userId);
+
+    if (!resp) {
+      throw new NotFoundError("User Not Found");
+    }
+
+    res.status(204).send();
 }
 
 async function handlerLogin(req: Request, res: Response) {
@@ -171,7 +207,7 @@ async function handlerLogin(req: Request, res: Response) {
       throw new Error("Could not create Refresh Token");
     }
 
-    res.status(200).send({ id: user.id, createdAt: user.createdAt, updatedAt: user.updatedAt, email: user.email, token: makeJWT(user.id, newUser.expiresInSeconds, config.api.secret), refreshToken: refreshToken.token });
+    res.status(200).send({ id: user.id, createdAt: user.createdAt, updatedAt: user.updatedAt, email: user.email, isChirpyRed: user.isChirpyRed, token: makeJWT(user.id, newUser.expiresInSeconds, config.api.secret), refreshToken: refreshToken.token });
 
 }
 
