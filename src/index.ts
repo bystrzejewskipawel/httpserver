@@ -8,7 +8,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { createUser, deleteUsers, getUserByEmail, updateToRed, updateUser } from "./db/queries/users.js";
 import { NewUser, User, NewChirp, NewRefreshToken } from "./db/schema.js";
-import { createChirp, deleteChirpByID, getAllChirps, getChirpByID } from "./db/queries/chirps.js";
+import { createChirp, deleteChirpByID, getAllChirps, getChirpByID, getAllChirpsOfAuthor, getAllChirpsSortBy } from "./db/queries/chirps.js";
 import { hashPassword, checkPasswordHash, getBearerToken, makeJWT, validateJWT, makeRefreshToken, getAPIKey } from "./auth.js";
 import { createRefreshToken, getRefreshToken, revokeToken } from "./db/queries/tokens.js";
 
@@ -250,7 +250,27 @@ async function handlerDeleteChirpByID(req: Request, res: Response) {
 }
 
 async function handlerGetChirps(req: Request, res: Response) {
-    const resp = await getAllChirps();
+
+    let authorId = "";
+    let authorIdQuery = req.query.authorId;
+    if (typeof authorIdQuery === "string") {
+      authorId = authorIdQuery;
+    }
+
+    let sortMethod = "";
+    let sortMethodQuery = req.query.sort;
+    if (typeof sortMethodQuery === "string") {
+      sortMethod = sortMethodQuery;
+    }
+
+    let resp;
+    if (authorId !== "") {
+      resp = await getAllChirpsOfAuthor(authorId);
+    } else if (sortMethod !== "") {
+      resp = await getAllChirpsSortBy(sortMethod);
+    } else {
+      resp = await getAllChirps();
+    }
 
     if (!resp) {
       throw new Error("Could not get chirps");
